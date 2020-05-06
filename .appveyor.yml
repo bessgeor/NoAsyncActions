@@ -1,0 +1,58 @@
+﻿version: '{build}'
+clone_script:
+- cmd: >-
+    git clone -q --branch=%APPVEYOR_REPO_BRANCH% https://github.com/%APPVEYOR_REPO_NAME%.git %APPVEYOR_BUILD_FOLDER%
+    && cd %APPVEYOR_BUILD_FOLDER%
+    && git checkout -qf %APPVEYOR_REPO_COMMIT%
+    && git submodule update --init --recursive
+pull_requests:
+  do_not_increment_build_number: true
+nuget:
+  disable_publish_on_pr: true
+before_build:
+  - dotnet restore
+build_script:
+  - dotnet build --no-restore -c Release
+  - ps: |
+      $versionTag = git describe --abbrev=0 --exact-match 2>&1 # powershell can't capture native errors from git
+      if ($versionTag -match 'fatal: no tag exactly matches')
+      {
+       $versionTag = $null
+      }
+      $latestVersionTag = git describe --abbrev=0
+      $devVersion = "$($latestVersionTag)-dev$($Env:APPVEYOR_BUILD_VERSION)"
+      $pathExtractor = [regex]::new("Successfully created package .(?<PackagePath>[^']+)'")
+
+      $devMessage = nuget pack -properties version=$devVersion
+      $devPath = $pathExtractor.Match($devMessage).Groups['PackagePath'].Value
+      
+      Push-AppveyorArtifact $devPath -DeploymentName devPackage -Type NuGetPackage
+      
+      if ($versionTag -ne $null)
+      {
+        $releaseMessage = nuget pack -properties version=$versionTag
+        $releasePath = $pathExtractor.Match($releaseMessage).Groups['PackagePath'].Value
+        Push-AppveyorArtifact $releasePath -DeploymentName releasePackage -Type NuGetPackage
+      }
+
+test_script:
+  - ps: |
+      cd NoAsyncActions.Test
+      dotnet test --no-restore -c Release
+      cd ../
+deploy:
+  - provider: NuGet
+    name: releaseOnNuget
+    api_key:
+      secure: cMXDyTieSqQcDjJ/RgNTr1vOHdNrnS37rSvTlJDsP0JsfJji+IRQq1PJDmQYpkq/
+    skip_symbols: false
+    artifact: releasePackage
+    on:
+      appveyor_repo_tag: true
+  - provider: NuGet
+    name: nightlyOnMyGet
+    server: https://www.myget.org/F/noasyncactions/api/v2/package
+    api_key:
+      secure: +aO0ePYYFWEGCTwQJXDKZcMIe2bdo5p3cK4dUimdwomjIw64FmY+R0jinUOIAShQ
+    skip_symbols: false
+    artifact: devPackage
