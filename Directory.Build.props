@@ -1,0 +1,8 @@
+﻿<Project>
+	<PropertyGroup Condition=" '$(MSBuildProjectExtension)'=='.csproj' ">
+		<LangVersion>8</LangVersion>
+	</PropertyGroup>
+	<PropertyGroup Condition=" '$(MSBuildProjectExtension)'=='.fsproj' ">
+		<LangVersion>latest</LangVersion>
+	</PropertyGroup>
+</Project>
